@@ -210,6 +210,7 @@ dependencies:
   - pulseaudio=14.0=h0d2025b_11
   - pure_eval=0.2.2=pyhd8ed1ab_0
   - pycparser=2.21=pyhd8ed1ab_0
+  - pyg-lib #old version pyg-lib==0.1.0+pt113cu117
   - pyparsing=3.0.9=pyhd8ed1ab_0
   - pyqt=5.15.7=py310h29803b5_2
   - pyqt5-sip=12.11.0=py310hd8f1fbe_2
@@ -285,6 +286,7 @@ dependencies:
   - zipp=3.10.0=pyhd8ed1ab_0
   - zlib=1.2.13=h166bdaf_4
   - zstd=1.5.2=h6239696_4
+
   - pip:
     - absl-py==1.3.0
     - aiohttp==3.8.3
@@ -346,7 +348,7 @@ dependencies:
     - nvidia-cublas-cu11==11.10.3.66
     - nvidia-cuda-nvrtc-cu11==11.7.99
     - nvidia-cuda-runtime-cu11==11.7.99
-    - nvidia-cudnn-cu11==8.6.0.163
+    # removed nvidia-cudnn-cu11==8.6.0.163 (conflicting versions)
     - oauthlib==3.2.2
     - opt-einsum==3.3.0
     - palettable==3.3.0
@@ -358,12 +360,12 @@ dependencies:
     - platformdirs==3.0.0
     - plivo==4.32.0
     - plotnine==0.10.1
-    - protobuf==4.23.4
+    # removed protobuf==4.23.4 (other packages install it)
     - pyarrow==11.0.0
     - pyasn1==0.4.8
     - pyasn1-modules==0.2.8
     - pydantic==1.10.5
-    - pyg-lib==0.1.0+pt113cu117
+    - pyg-lib
     - pygments==2.14.0
     - pyjwt==2.6.0
     - pyparser==1.0
@@ -380,14 +382,15 @@ dependencies:
     - rsa==4.9
     - scikit-learn==1.2.0
     - scipy==1.9.3
-    - sklearn==0.0.post1
     - skorch==0.12.1
+    # removed sklearn==0.0.post1 (older version of scikit-learn)
     - statsmodels==0.13.5
     - tabulate==0.9.0
     - tensorboard==2.13.0
     - tensorboard-data-server==0.7.1
     - tensorboard-plugin-wit==1.8.1
-    - tensorboardx==2.5.1
+    # removed tensorboardx==2.5.1 
+    # (conflicting versions between tensorboardx and tensorboard)
     - tensorflow==2.13.0
     - tensorflow-estimator==2.13.0
     - tensorflow-io-gcs-filesystem==0.28.0
@@ -406,4 +409,5 @@ dependencies:
     - werkzeug==2.2.2
     - wrapt==1.14.1
     - yarl==1.8.2
-prefix: /uscms_data/d3/nswood/mambaforge/envs/myenv
+  
+prefix: /export/home/phys/mpeczak/ECON_AE_Training
