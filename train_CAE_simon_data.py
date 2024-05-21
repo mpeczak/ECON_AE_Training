@@ -171,7 +171,7 @@ def resample_indices(indices, energy, bin_edges, target_count, bin_index):
         return np.random.choice(bin_indices, size=target_count, replace=True)
 
 def load_data(nfiles,batchsize,eLinks = -1, normalize = True):
-    from files import get_rootfiles
+    from files import get_files_recursive
     from coffea.nanoevents import NanoEventsFactory
     import awkward as ak
     import numpy as np
@@ -179,11 +179,11 @@ def load_data(nfiles,batchsize,eLinks = -1, normalize = True):
     data_list = []
 
     # Paths to Simon's dataset
-    hostid = 'cmseos.fnal.gov'
-    basepath = '/store/group/lpcpfnano/srothman/Nov08_2023_ECON_trainingdata'
+    # hostid = 'vera.psc.edu'
+    basepath = '/hildafs/projects/phy230010p/share/ECONAE/training/data'
     tree = 'FloatingpointThreshold0DummyHistomaxDummynTuple/HGCalTriggerNtuple'
 
-    files = get_rootfiles(hostid, basepath)[0:nfiles]
+    files = get_files_recursive(basepath)[0:nfiles]
 
 
     #loop over all the files
@@ -520,8 +520,8 @@ for eLinks in [2,3,4,5]:
     y = ReLU()(y)
     recon = y
     
-    encoder = keras.Model([input_enc,cond], latent, name="encoder")
-    decoder = keras.Model([input_dec], recon, name="decoder")
+    encoder = tf.keras.Model([input_enc,cond], latent, name="encoder")
+    decoder = tf.keras.Model([input_dec], recon, name="decoder")
 
     cae = Model(
         inputs=[input_enc,cond],
