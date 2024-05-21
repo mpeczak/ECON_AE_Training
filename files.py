@@ -1,20 +1,12 @@
-import fsspec_xrootd as xrdfs
+import os
 
-def get_rootfiles(hostid, path):
-    fs = xrdfs.XRootDFileSystem(hostid = hostid)
-    return get_files_recursive(fs, path,
-                               lambda f : f.endswith(".root"), 
-                               'root://%s/'%hostid)
-
-def get_files_recursive(fs, rootpath, allowed = lambda f : True, prepend = ''):
-    pathlist = fs.ls(rootpath)
+def get_files_recursive(rootpath, allowed=lambda f: f.endswith(".root"), prepend=''):
     result = []
-    for path in pathlist:
-        if path['type'] == 'directory':
-            result += get_files_recursive(fs, path['name'], allowed, prepend)
-        elif path['type'] == 'file':
-            if allowed(path['name']):
-                result.append(prepend + path['name'])
-        else:
-            raise RuntimeError("Unexpected file type: {}".format(path['type']))
+    for root, dirs, files in os.walk(rootpath):
+        for file in files:
+            if allowed(file):
+                result.append(os.path.join(prepend, root, file))
     return result
+
+#rootpath = '/hildafs/projects/phy230010p/share/ECONAE/training/data'
+#files = get_files_recursive(rootpath)
