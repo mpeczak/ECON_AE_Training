@@ -1,10 +1,12 @@
 import tensorflow as tf
+tf.config.run_functions_eagerly(True)
 import pickle
 from tensorflow.keras.models import model_from_json
 from tensorflow.python.framework.convert_to_constants import convert_variables_to_constants_v2
 
 import matplotlib.pyplot as plt
 import mplhep as hep
+
 import numpy as np
 
 ## Load qkeras/Keras model from json file
@@ -21,12 +23,12 @@ def load_model(f_model):
                                                     'QDense':QDense,
                                                     'Clip':Clip,
                                                     'QInitializer':QInitializer})
-            hdf5  = f_model.replace('json','hdf5')
+            hdf5  = f_model.replace('json','..weights.h5')
             model.load_weights(hdf5)
         else:
             f.seek(0)
             model = model_from_json(f.read())
-            hdf5  = f_model.replace('json','hdf5')
+            hdf5  = f_model.replace('json','.weights.h5')
         model.load_weights(hdf5)
     return model
 
@@ -41,12 +43,19 @@ def set_quantized_weights(model,f_pkl):
 
 # Write model to graph
 def write_frozen_graph_enc(model,outputName="frozen_graph.pb",logdir='./',asText=False):
-#     full_model = tf.function(lambda x,y,z: model(x,y,z))
-    @tf.function
-    def full_model(x,y):
-        return model([x,y])
+    print(tf.executing_eagerly())
     
-    full_model = full_model.get_concrete_function(tf.TensorSpec(model.inputs[0].shape, model.inputs[0].dtype),tf.TensorSpec(model.inputs[1].shape, model.inputs[1].dtype))
+    #full_model = tf.function(lambda x,y,z: model(x,y,z))
+    @tf.function
+    @tf.config.run_functions_eagerly(True)
+    def full_model(x,y): 
+        return model([x,y])
+
+    a = tf.TensorSpec(model.inputs[0].shape, model.inputs[0].dtype)
+    b = tf.TensorSpec(model.inputs[1].shape, model.inputs[1].dtype)
+
+    full_model = full_model.get_concrete_function(a,b)
+    print("done2")
 
     frozen_func = convert_variables_to_constants_v2(full_model)
     frozen_func.graph.as_graph_def()
