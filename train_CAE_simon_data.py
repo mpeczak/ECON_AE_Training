@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+tf.compat.v1.enable_eager_execution()
 from tensorflow import keras
 from keras import layers
 from keras.layers import Layer
@@ -24,6 +25,8 @@ from tensorflow.python.framework.convert_to_constants import convert_variables_t
 
 import matplotlib.pyplot as plt
 import mplhep as hep
+
+tf.config.run_functions_eagerly(True)
 
 def filter_for_flat_distribution(dataset, index_i):
     """
@@ -116,9 +119,9 @@ def save_models(autoencoder, name, isQK=False):
     with open(f'./{model_dir}/encoder_{name}.json','w') as f:            f.write(encoder.to_json())
     with open(f'./{model_dir}/decoder_{name}.json','w') as f:            f.write(decoder.to_json())
 
-    autoencoder.save_weights(f'./{model_dir}/{name}.hdf5')
-    encoder.save_weights(f'./{model_dir}/encoder_{name}.hdf5')
-    decoder.save_weights(f'./{model_dir}/decoder_{name}.hdf5')
+    autoencoder.save_weights(f'./{model_dir}/{name}.weights.h5')
+    encoder.save_weights(f'./{model_dir}/encoder_{name}.weights.h5')
+    decoder.save_weights(f'./{model_dir}/decoder_{name}.weights.h5')
     if isQK:
         encoder_qWeight = model_save_quantized_weights(encoder)
         with open(f'{model_dir}/encoder_{name}.pkl','wb') as f:
@@ -184,6 +187,7 @@ def load_data(nfiles,batchsize,eLinks = -1, normalize = True):
     tree = 'FloatingpointThreshold0DummyHistomaxDummynTuple/HGCalTriggerNtuple'
 
     files = get_files_recursive(basepath)[0:nfiles]
+    print("got files")
 
 
     #loop over all the files
@@ -231,6 +235,7 @@ def load_data(nfiles,batchsize,eLinks = -1, normalize = True):
         sumCALQ = np.squeeze(sumCALQ.to_numpy())
         wafer_sim_energy = np.squeeze(wafer_sim_energy.to_numpy())
         wafer_energy = np.squeeze(wafer_energy.to_numpy())
+
 
 
 
@@ -546,7 +551,8 @@ for eLinks in [2,3,4,5]:
         print('Using Lion Optimizer')
         opt = tf.keras.optimizers.Lion(learning_rate = args.lr,weight_decay = 0.00025)
 
-    cae.compile(optimizer=opt, loss=loss)
+    cae.compile(optimizer=opt, loss=loss, loss_weights=None, metrics=None, weighted_metrics=None,
+                run_eagerly=True, steps_per_execution=1, jit_compile='auto', auto_scale_loss=True)
     cae.summary()
 
 
@@ -635,8 +641,7 @@ for eLinks in [2,3,4,5]:
             if epoch % 25 == 0:
                 print('New Best Model')
             best_val_loss = total_loss_val
-            cae.save_weights(os.path.join(model_dir, 'best-epoch.tf'.format(epoch)))
-            encoder.save_weights(os.path.join(model_dir, 'best-encoder-epoch.tf'.format(epoch)))
-            decoder.save_weights(os.path.join(model_dir, 'best-decoder-epoch.tf'.format(epoch)))
+            cae.save_weights(os.path.join(model_dir, 'best-epoch.weights.h5'.format(epoch)))
+            encoder.save_weights(os.path.join(model_dir, 'best-encoder-epoch.weights.h5'.format(epoch)))
+            decoder.save_weights(os.path.join(model_dir, 'best-decoder-epoch.weights.h5'.format(epoch)))
     save_models(cae,args.mname,isQK = True)
-
