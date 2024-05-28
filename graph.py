@@ -45,11 +45,7 @@ def set_quantized_weights(model,f_pkl):
 def write_frozen_graph_enc(model,outputName="frozen_graph.pb",logdir='./',asText=False):
     print(tf.executing_eagerly())
     
-    #full_model = tf.function(lambda x,y,z: model(x,y,z))
-    @tf.function
-    @tf.config.run_functions_eagerly(True)
-    def full_model(x,y): 
-        return model([x,y])
+    full_model = tf.function(lambda x,y: model([x,y]))
 
     a = tf.TensorSpec(model.inputs[0].shape, model.inputs[0].dtype)
     b = tf.TensorSpec(model.inputs[1].shape, model.inputs[1].dtype)
