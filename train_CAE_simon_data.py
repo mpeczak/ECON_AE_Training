@@ -26,6 +26,11 @@ from tensorflow.python.framework.convert_to_constants import convert_variables_t
 import matplotlib.pyplot as plt
 import mplhep as hep
 
+from tensorflow.keras.layers import Input, Conv2D, Activation, Flatten, Dense, concatenate
+from tensorflow.keras.models import Model
+from tensorflow.keras.activations import relu
+from tensorflow.keras.initializers import Constant
+
 tf.config.run_functions_eagerly(True)
 
 def filter_for_flat_distribution(dataset, index_i):
@@ -110,7 +115,7 @@ def get_pams():
     return jsonpams
 
 def save_models(autoencoder, name, isQK=False):
-
+    print("All layer names in the model:", [layer.name for layer in autoencoder.layers])
     json_string = autoencoder.to_json()
     encoder = autoencoder.get_layer("encoder")
     decoder = autoencoder.get_layer("decoder")
@@ -126,7 +131,9 @@ def save_models(autoencoder, name, isQK=False):
         encoder_qWeight = model_save_quantized_weights(encoder)
         with open(f'{model_dir}/encoder_{name}.pkl','wb') as f:
             pickle.dump(encoder_qWeight,f)
-        encoder = graph.set_quantized_weights(encoder,f'{model_dir}/encoder_'+name+'.pkl')
+        print("Encoder before setting quantized weights:", encoder)
+        encoder = graph.set_quantized_weights(encoder, f'{model_dir}/encoder_' + name + '.pkl')
+    print("Encoder after setting quantized weights:", encoder) 
     graph.write_frozen_graph_enc(encoder,'encoder_'+name+'.pb',logdir = model_dir)
     graph.write_frozen_graph_enc(encoder,'encoder_'+name+'.pb.ascii',logdir = model_dir,asText=True)
     graph.write_frozen_graph_dec(decoder,'decoder_'+name+'.pb',logdir = model_dir)
@@ -135,6 +142,7 @@ def save_models(autoencoder, name, isQK=False):
     graph.plot_weights(autoencoder,outdir = model_dir)
     graph.plot_weights(encoder,outdir = model_dir)
     graph.plot_weights(decoder,outdir = model_dir)
+    print("done")
     
 
 
@@ -178,7 +186,7 @@ def load_data(nfiles,batchsize,eLinks = -1, normalize = True):
     from coffea.nanoevents import NanoEventsFactory
     import awkward as ak
     import numpy as np
-    ecr = np.vectorize(encode)
+    ecr = np.vectorize(encoder)
     data_list = []
 
     # Paths to Simon's dataset
@@ -447,9 +455,9 @@ for eLinks in [2,3,4,5]:
     if not os.path.exists(model_dir):
         os.system("mkdir -p " + model_dir)
     bitsPerOutput = bitsPerOutputLink[eLinks]
-    nIntegerBits = 1;
-    nDecimalBits = bitsPerOutput - nIntegerBits;
-    outputSaturationValue = (1 << nIntegerBits) - 1./(1 << nDecimalBits);
+    nIntegerBits = 1
+    nDecimalBits = bitsPerOutput - nIntegerBits
+    outputSaturationValue = (1 << nIntegerBits) - 1./(1 << nDecimalBits)
     maxBitsPerOutput = 9
     outputMaxIntSize = 1
 
@@ -473,42 +481,30 @@ for eLinks in [2,3,4,5]:
     
 
 
-    input_enc = Input(batch_shape=(batch,8,8, 1), name = 'Wafer')
-    # sum_input quantization is done in the dataloading step for simplicity
-    
-    cond = Input(batch_shape=(batch, 8), name = 'Cond')
+    # Define encoder inputs
+    input_enc = Input(batch_shape=(batch, 8, 8, 1), name='Wafer')
+    cond = Input(batch_shape=(batch, 8), name='Cond')
 
+    # Apply quantization to input
+    x = Activation('linear', name='input_quantization')(input_enc)  # No quantization in this step
 
-    # Quantizing input, 8 bit quantization, 1 bit for integer
-    x = QActivation(quantized_bits(bits = 8, integer = 1),name = 'input_quantization')(input_enc)
-    x = keras_pad()(x)
-#     x = tf.pad(
-#         x, padding, mode='CONSTANT', constant_values=0, name=None
-#     )
-    x = QConv2D(n_kernels,
-                CNN_kernel_size, 
-                strides=2,padding = 'valid', kernel_quantizer=quantized_bits(bits=conv_weightBits,integer=0,keep_negative=1,alpha=1), bias_quantizer=quantized_bits(bits=conv_biasBits,integer=0,keep_negative=1,alpha=1),
-                name="conv2d")(x)
-    
-    x = QActivation(quantized_bits(bits = 8, integer = 1),name = 'act')(x)
-    
+    # Apply convolutional layer
+    x = Conv2D(n_kernels, CNN_kernel_size, strides=2, padding='valid', name="conv2d")(x)
 
+    # Apply activation function
+    x = Activation(relu, name='act')(x)
+
+    # Flatten the output
     x = Flatten()(x)
 
-    x = QDense(n_encoded, 
-               kernel_quantizer=quantized_bits(bits=dense_weightBits,integer=0,keep_negative=1,alpha=1),
-               bias_quantizer=quantized_bits(bits=dense_biasBits,integer=0,keep_negative=1,alpha=1),
-               name="dense")(x)
+    # Apply dense layer
+    x = Dense(n_encoded, name="dense")(x)
 
-    # Quantizing latent space, 9 bit quantization, 1 bit for integer
-    x = QActivation(qkeras.quantized_bits(bits = 9, integer = 1),name = 'latent_quantization')(x)
-    latent = x
-    if bitsPerOutput > 0 and maxBitsPerOutput > 0:
-        latent = keras_floor()(latent *  outputMaxIntSize)
-        latent = keras_minimum()(latent/outputMaxIntSize, sat_val = outputSaturationValue)
-#         latent = tf.minimum(tf.math.floor(latent *  outputMaxIntSize) /  outputMaxIntSize, outputSaturationValue)
+    # Apply quantization to latent space
+    x = Activation('linear', name='latent_quantization')(x)  # No quantization in this step
 
-    latent = concatenate([latent,cond],axis=1)
+    # Concatenate with condition
+    latent = concatenate([x, cond], axis=1)
    
 
     
@@ -644,4 +640,5 @@ for eLinks in [2,3,4,5]:
             cae.save_weights(os.path.join(model_dir, 'best-epoch.weights.h5'.format(epoch)))
             encoder.save_weights(os.path.join(model_dir, 'best-encoder-epoch.weights.h5'.format(epoch)))
             decoder.save_weights(os.path.join(model_dir, 'best-decoder-epoch.weights.h5'.format(epoch)))
-    save_models(cae,args.mname,isQK = True)
+            
+    save_models(cae,args.mname, isQK=True)
