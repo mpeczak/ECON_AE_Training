@@ -1,8 +1,10 @@
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+tf.compat.v1.enable_eager_execution()
 from tensorflow import keras
-from tensorflow.keras import layers
+from keras import layers
+from keras.layers import Layer
 from qkeras import QActivation,QConv2D,QDense,quantized_bits
 import qkeras
 from qkeras.utils import model_save_quantized_weights
@@ -12,33 +14,45 @@ from telescope import *
 from utils import *
 import inspect
 import json
+
 import os
 import sys
 import graph
+import h5py
 
 import pickle
 from tensorflow.keras.models import model_from_json
+from tensorflow.keras.models import load_model
 from tensorflow.python.framework.convert_to_constants import convert_variables_to_constants_v2
 
 import matplotlib.pyplot as plt
 import mplhep as hep
+
+from tensorflow.keras.layers import Input, Conv2D, Activation, Flatten, Dense, concatenate
+from tensorflow.keras.models import Model
+from tensorflow.keras.activations import relu
+from tensorflow.keras.initializers import Constant
+
+tf.config.run_functions_eagerly(True)
 
 
 p = ArgumentParser()
 p.add_args(
     ('--mpath', p.STR),
     ('--opath', p.STR),
+    ('--num_files', p.INT),
+    ('--mname', p.STR)
     
 )
 
-    '''
+'''
     ---------------------------------------------------------------------
     
     mpath: path to directory with all model folders (for this case: ~/trained_model) 
     
     opath: where you want latent space variables to saved to. Will create a dir for them there
     ---------------------------------------------------------------------
-    '''    
+'''    
 
 
     
@@ -64,6 +78,21 @@ def get_pams():
             jsonpams[k] = v 
     return jsonpams
 
+def save_models(autoencoder, name, isQK=False):
+    json_string = autoencoder.to_json()
+    f'./{model_dir}/{name}.json'
+    with open(f'./{model_dir}/{name}.json','w') as f:        f.write(autoencoder.to_json())
+
+    autoencoder.save_weights(f'./{model_dir}/{name}.weights.h5')
+    if isQK:
+        encoder_qWeight = model_save_quantized_weights(autoencoder)
+        with open(f'{model_dir}/encoder_{name}.pkl','wb') as f:
+            pickle.dump(encoder_qWeight,f)
+        autoencoder = graph.set_quantized_weights(encoder, f'{model_dir}/encoder_' + name + '.pkl')
+
+    graph.plot_weights(autoencoder,outdir = model_dir)
+    print("done")
+
 
 def load_matching_state_dict(model, state_dict_path):
     state_dict = tf.compat.v1.train.load_checkpoint(state_dict_path)
@@ -76,29 +105,18 @@ def load_matching_state_dict(model, state_dict_path):
     tf.compat.v1.train.init_from_checkpoint(state_dict_path, filtered_state_dict)
 
 def load_data(nfiles,batchsize,eLinks = -1, normalize = True):
-    from files import get_rootfiles
+    from files import get_files_recursive
     from coffea.nanoevents import NanoEventsFactory
     import awkward as ak
     import numpy as np
-    ecr = np.vectorize(encode)
+    ecr = np.vectorize(encoder)
     data_list = []
+  
+    basepath = '/hildafs/projects/phy230010p/share/ECONAE/training/data'
+    tree = 'FloatingpointThreshold0DummyHistomaxDummynTuple/HGCalTriggerNtuple'
 
-    
-    '''
-    ---------------------------------------------------------------------
-    
-    Here you should implement some kind of data loading
-    
-    The rest of the code expects .root files in the same format as on LPC 
-    
-    ---------------------------------------------------------------------
-    '''    
-    # Paths to Simon's dataset
-#     hostid = 'cmseos.fnal.gov'
-#     basepath = '/store/group/lpcpfnano/srothman/Nov08_2023_ECON_trainingdata'
-#     tree = 'FloatingpointThreshold0DummyHistomaxDummynTuple/HGCalTriggerNtuple'
-
-    files = get_rootfiles(hostid, basepath)[0:nfiles]
+    files = get_files_recursive(basepath)[0:nfiles]
+    print("got files")
 
 
     #loop over all the files
@@ -236,8 +254,50 @@ def load_data(nfiles,batchsize,eLinks = -1, normalize = True):
 
     test_loader = test_dataset.batch(batchsize).shuffle(buffer_size=test_size).prefetch(buffer_size=tf.data.AUTOTUNE)
 
+    with h5py.File('inputs_list.h5', 'w') as f:
+        f.create_dataset('inputs_list', data=inputs_list)
+        f.close()
+    with h5py.File('eta_list.h5', 'w') as f:
+        f.create_dataset('eta_list', data=eta_list)
+        f.close()
+    with h5py.File('waferv_list.h5', 'w') as f:
+        f.create_dataset('waferv_list', data=waferv_list)
+        f.close()
+    with h5py.File('waferu_list.h5', 'w') as f:
+        f.create_dataset('waferu_list', data=waferu_list)
+        f.close()
+    with h5py.File('wafertype_list.h5', 'w') as f:
+        f.create_dataset('wafertype_list', data=wafertype_list)
+        f.close()
+    with h5py.File('sumCALQ_list.h5', 'w') as f:
+        f.create_dataset('sumCALQ_list', data=sumCALQ_list)
+        f.close()
+    with h5py.File('layer_list.h5', 'w') as f:
+        f.create_dataset('layer_list', data=layer_list)
+        f.close()
+
 
     return train_loader, test_loader    
+
+class keras_pad(Layer):
+    def call(self, x):
+        padding = tf.constant([[0,0],[0, 1], [0, 1], [0, 0]])
+        return tf.pad(
+        x, padding, mode='CONSTANT', constant_values=0, name=None
+    )
+    
+    
+class keras_minimum(Layer):
+    def call(self, x, sat_val = 1):
+        return tf.minimum(x,sat_val)
+    
+    
+class keras_floor(Layer):
+    def call(self, x):
+        if isinstance(x, tf.SparseTensor):
+            x = tf.sparse.to_dense(x)
+            
+        return tf.math.floor(x)
     
     
 args = p.parse_args()
@@ -255,9 +315,9 @@ for eLinks in [2,3,4,5]:
     if not os.path.exists(model_dir):
         os.system("mkdir -p " + model_dir)
     bitsPerOutput = bitsPerOutputLink[eLinks]
-    nIntegerBits = 1;
-    nDecimalBits = bitsPerOutput - nIntegerBits;
-    outputSaturationValue = (1 << nIntegerBits) - 1./(1 << nDecimalBits);
+    nIntegerBits = 1
+    nDecimalBits = bitsPerOutput - nIntegerBits
+    outputSaturationValue = (1 << nIntegerBits) - 1./(1 << nDecimalBits)
     maxBitsPerOutput = 9
     outputMaxIntSize = 1
 
@@ -283,47 +343,41 @@ for eLinks in [2,3,4,5]:
 
     input_enc = Input(batch_shape=(batch,8,8,1), name = 'Wafer')
 
-    # Quantizing input, 8 bit quantization, 1 bit for integer
-    x = QActivation(quantized_bits(bits = 8, integer = 1),name = 'input_quantization')(input_enc)
-    x = tf.pad(
-        x, padding, mode='CONSTANT', constant_values=0, name=None
-    )
-    x = QConv2D(n_kernels,
-                CNN_kernel_size, 
-                strides=2,padding = 'valid', kernel_quantizer=quantized_bits(bits=conv_weightBits,integer=0,keep_negative=1,alpha=1), bias_quantizer=quantized_bits(bits=conv_biasBits,integer=0,keep_negative=1,alpha=1),
-                name="conv2d")(x)
+     # Apply quantization to input
+    x = Activation('linear', name='input_quantization')(input_enc)  # No quantization in this step
 
-    x = QActivation(quantized_bits(bits = 8, integer = 1),name = 'act')(x)
+    # Apply convolutional layer
+    x = Conv2D(n_kernels, CNN_kernel_size, strides=2, padding='valid', name="conv2d")(x)
+
+    # Apply activation function
+    x = Activation(relu, name='act')(x)
+
+    # Flatten the output
     x = Flatten()(x)
-    x = QDense(n_encoded, 
-               kernel_quantizer=quantized_bits(bits=dense_weightBits,integer=0,keep_negative=1,alpha=1),
-               bias_quantizer=quantized_bits(bits=dense_biasBits,integer=0,keep_negative=1,alpha=1),
-               name="dense")(x)
 
-    # Quantizing latent space, 9 bit quantization, 1 bit for integer
-    x = QActivation(qkeras.quantized_bits(bits = 9, integer = 1),name = 'latent_quantization')(x)
+    # Apply dense layer
+    x = Dense(n_encoded, name="dense")(x)
+
+    # Apply quantization to latent space
+    x = Activation('linear', name='latent_quantization')(x)  # No quantization in this step
 
     latent = x
     if bitsPerOutput > 0 and maxBitsPerOutput > 0:
-        latent = tf.minimum(tf.math.floor(latent *  outputMaxIntSize) /  outputMaxIntSize, outputSaturationValue)
-
-    input_dec = Input(batch_shape=(batch,24))
-    y = Dense(24)(input_dec)
-    y = ReLU()(y)
-    y = Dense(64)(y)
-    y = ReLU()(y)
-    y = Dense(128)(y)
-    y = ReLU()(y)
-    y = Reshape((4, 4, 8))(y)
-    y = Conv2DTranspose(1, (3, 3), strides=(2, 2),padding = 'valid')(y)
-    y =y[:,0:8,0:8]
-    y = ReLU()(y)
-    recon = y
+        #latent = tf.minimum(tf.math.floor(latent *  outputMaxIntSize) /  outputMaxIntSize, outputSaturationValue)
+        floor = keras_floor()((latent *  outputMaxIntSize))/ outputMaxIntSize
+        latent = keras_minimum()(floor, tf.convert_to_tensor(outputSaturationValue))
     
-    encoder = keras.Model([input_enc], latent, name="encoder")
+    encoder = tf.keras.Model([input_enc], latent, name="encoder")
 
-    encoder_path = os.path.join(args.mpath,f'model_{eLinks}_eLinks','best-encoder-epoch.tf')
+    encoder_path = os.path.join(args.mpath,f'model_{eLinks}_eLinks','best-encoder-epoch.weights.h5')
+
     encoder.load_weights(encoder_path)
+
+
+    print('Loading Data')
+    print(args.num_files)
+    train_loader, test_loader = load_data(args.num_files,batch,eLinks =eLinks)
+    print('Data Loaded')
     
     
     '''
@@ -336,14 +390,31 @@ for eLinks in [2,3,4,5]:
 #     decoder = keras.Model([input_dec], recon, name="decoder")
 #     decoder_path = os.path.join(args.mpath,f'model_{eLinks}_eLinks','best-decoder-epoch.tf')
 #     decoder.load_weights(decoder_path)
-    
+
+    conds = []
+
     train_latent = []
+    i = 0
     for wafers, cond in train_loader:
-        train_latent.append(encoder.predict(wafers,cond))
+        if (i == 10):
+            break
+        encoder.save_weights(os.path.join(model_dir, 'ls.weights.h5'))
+        train_latent.append(encoder.predict(wafers))
+        conds.append(cond)
+        i = i+1
+    
+    print('train latent done')
+
+    i = 0
 
     test_latent = []
     for wafers, cond in test_loader:
-        test_latent.append(encoder.predict(wafers,cond))
+        if (i == 10):
+            break
+        test_latent.append(encoder.predict(wafers))
+        i = i+1
+    
+    print('test latent done')
 
     
     
@@ -354,4 +425,16 @@ for eLinks in [2,3,4,5]:
     
     ---------------------------------------------------------------------
     '''
-    
+    save_models(encoder,args.mname, isQK=False)
+
+    with h5py.File('train_latent.h5', 'w') as f:
+        f.create_dataset('train_latent', data=train_latent)
+        f.close()
+
+    with h5py.File('test_latent.h5', 'w') as f:
+        f.create_dataset('test_latent', data=test_latent)
+        f.close()
+
+    with h5py.File('conds.h5', 'w') as f:
+        f.create_dataset('conds', data=conds)
+        f.close()
