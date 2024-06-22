@@ -6,7 +6,6 @@ from tensorflow.python.framework.convert_to_constants import convert_variables_t
 
 import matplotlib.pyplot as plt
 import mplhep as hep
-
 import numpy as np
 
 ## Load qkeras/Keras model from json file
@@ -23,7 +22,7 @@ def load_model(f_model):
                                                     'QDense':QDense,
                                                     'Clip':Clip,
                                                     'QInitializer':QInitializer})
-            hdf5  = f_model.replace('json','..weights.h5')
+            hdf5  = f_model.replace('json','.weights.h5')
             model.load_weights(hdf5)
         else:
             f.seek(0)
@@ -41,7 +40,9 @@ def set_quantized_weights(model,f_pkl):
             layer.set_weights(ws[layer_name]['weights'])
     return model
 
+
 # Write model to graph
+
 def write_frozen_graph_enc(model,outputName="frozen_graph.pb",logdir='./',asText=False):
     print(tf.executing_eagerly())
     
@@ -63,6 +64,7 @@ def write_frozen_graph_enc(model,outputName="frozen_graph.pb",logdir='./',asText
                       logdir=logdir,
                       name=outputName,
                       as_text=asText)
+
 def write_frozen_graph_dec(model,outputName="frozen_graph.pb",logdir='./',asText=False):
     full_model = tf.function(lambda x: model(x))
     full_model = full_model.get_concrete_function(
@@ -168,6 +170,7 @@ def get_layer_output(model,layer_index,x):
 
 ## plotAll the weights from model
 def plot_weights(model,nBins=50,outdir = './'):
+    print('plotting')
     plt.figure(figsize=(8,6))
     for ilayer in range(1,len(model.layers)):
         if len(model.layers[ilayer].get_weights())>0:
@@ -175,13 +178,13 @@ def plot_weights(model,nBins=50,outdir = './'):
             data = np.histogram(model.layers[ilayer].get_weights()[0])
 #             print(ilayer, label,'unique weights',len(np.unique(model.layers[ilayer].get_weights()[0])))
             hep.histplot(data[0],data[1],label=label)
-#         else:
-#             print(ilayer,'no weights')
+        else:
+            print(ilayer,'no weights')
     plt.xlabel('weights')
     plt.ylabel('Entries')
     plt.yscale('log')            
     plt.legend()
-    plt.savefig(f"{outdir}/{model.name}_weights.pdf")
+    plt.savefig(f"{outdir}/ls_weights.pdf")
     plt.clf()
     
 #plot outputs from each layers given an input
