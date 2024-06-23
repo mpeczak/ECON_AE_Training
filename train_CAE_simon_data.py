@@ -181,6 +181,120 @@ def resample_indices(indices, energy, bin_edges, target_count, bin_index):
     else:
         return np.random.choice(bin_indices, size=target_count, replace=True)
 
+from imblearn.over_sampling import RandomOverSampler
+from imblearn.under_sampling import RandomUnderSampler
+from collections import Counter
+def custom_resample(wafers,c,simE):
+    
+    label = (simE[:,0] != 0).astype(int)
+    print(label)
+    n = len(label)
+    print(Counter(label))
+    indices = np.expand_dims(np.arange(n),axis = -1)
+    over = RandomOverSampler(sampling_strategy=0.1)
+    # fit and apply the transform
+    indices_p, label_p = over.fit_resample(indices, label)
+    # summarize class distribution
+    # define undersampling strategy
+    under = RandomUnderSampler(sampling_strategy=0.5)
+    # fit and apply the transform
+    indices_p, label_p = under.fit_resample(indices_p, label_p)
+    print(Counter(label_p))
+    wafers_p = wafers[indices_p[:,0]]
+    c_p = c[indices_p[:,0]]
+    
+    return wafers_p, c_p
+    
+def load_data(nfiles,batchsize,eLinks = -1, normalize = True):
+    from files import get_files_recursive
+    from coffea.nanoevents import NanoEventsFactory
+    import awkward as ak
+    import numpy as np
+    ecr = np.vectorize(encode)
+    data_list = []
+
+    # Paths to Simon's dataset
+    # hostid = 'vera.psc.edu'
+    basepath = '/hildafs/projects/phy230010p/share/ECONAE/training/data'
+    tree = 'FloatingpointThreshold0DummyHistomaxDummynTuple/HGCalTriggerNtuple'
+
+    files = get_files_recursive(basepath)[0:nfiles]
+    print("got files")
+
+
+    #loop over all the files
+    for i,file in enumerate(files):
+        x = NanoEventsFactory.from_root(file, treepath=tree).events()
+
+        min_pt = -1  # replace with your minimum value
+        max_pt = 10e10  # replace with your maximum value
+        gen_pt = ak.to_pandas(x.gen.pt).groupby(level=0).mean()
+        mask = (gen_pt['values'] >= min_pt) & (gen_pt['values'] <= max_pt)
+        
+        
+        layer = ak.to_pandas(x.wafer.layer)
+        eta = ak.to_pandas(x.wafer.eta)
+        v = ak.to_pandas(x.wafer.waferv)
+        u = ak.to_pandas(x.wafer.waferu)
+        wafertype = ak.to_pandas(x.wafer.wafertype)
+        wafer_sim_energy = ak.to_pandas(x.wafer.simenergy)
+        wafer_energy = ak.to_pandas(x.wafer.energy)
+        
+        # Combine all DataFrames into a single DataFrame
+        data_dict = {
+            'eta': eta.values.flatten(),
+            'v': v.values.flatten(),
+            'u': u.values.flatten(),
+            'wafertype': wafertype.values.flatten(),
+            'wafer_sim_energy': wafer_sim_energy.values.flatten(),
+            'wafer_energy': wafer_energy.values.flatten(),
+            'layer': layer.values.flatten()
+        }
+
+        # Add additional features AEin1 to AEin63 to the data dictionary
+        key = 'AEin0'
+        data_dict[key] = ak.to_pandas(x.wafer[key]).values.flatten()
+        for i in range(1, 64):
+            key = f'AEin{i}'
+            data_dict[key] = ak.to_pandas(x.wafer[key]).values.flatten()
+            key = f'CALQ{int(i)}'
+            data_dict[key] = ak.to_pandas(x.wafer[key]).values.flatten()
+            
+        
+        # Combine all data into a single DataFrame
+        combined_df = pd.DataFrame(data_dict, index=eta.index)
+        
+        print('Size after pt filtering')
+        print(len(filtered_df))
+        # Make eLink filter
+        filtered_key_df = key_df[key_df['trigLinks'] == float(eLinks)]
+        
+        calq_columns = [f'CALQ{i}' for i in range(64)]
+        combined_df['sumCALQ'] = combined_df[calq_columns].sum(axis=1)
+        # Filter based on eLink allocations
+        filtered_df = pd.merge(combined_df, filtered_key_df[['u', 'v', 'layer']], on=['u', 'v', 'layer'], how='inner')
+        
+        print('Size after eLink filtering')
+        print(len(filtered_df))
+
+        
+        # Process the filtered DataFrame
+        filtered_df['eta'] = filtered_df['eta'] / 3.1
+        filtered_df['v'] = filtered_df['v'] / 12
+        filtered_df['u'] = filtered_df['u'] / 12
+
+        # Convert wafertype to one-hot encoding
+        temp = filtered_df['wafertype'].astype(int).to_numpy()
+        wafertype_one_hot = np.zeros((temp.size, 3))
+        wafertype_one_hot[np.arange(temp.size), temp] = 1
+
+        # Assign the processed columns back to the DataFrame
+        filtered_df['wafertype'] = list(wafertype_one_hot)
+        filtered_df['sumCALQ'] = np.squeeze(filtered_df['sumCALQ'].to_numpy())
+        filtered_df['wafer_sim_energy'] = np.squeeze(filtered_df['wafer_sim_energy'].to_numpy())
+        filtered_df['wafer_energy'] = np.squeeze(filtered_df['wafer_energy'].to_numpy())
+        filtered_df['layer'] = np.squeeze(filtered_df['layer'].to_numpy())
+
 def load_data(nfiles,batchsize,eLinks = -1, normalize = True):
     from files import get_files_recursive
     from coffea.nanoevents import NanoEventsFactory
