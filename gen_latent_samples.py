@@ -254,27 +254,16 @@ def load_data(nfiles,batchsize,eLinks = -1, normalize = True):
 
     test_loader = test_dataset.batch(batchsize).shuffle(buffer_size=test_size).prefetch(buffer_size=tf.data.AUTOTUNE)
 
-    with h5py.File('inputs_list.h5', 'w') as f:
-        f.create_dataset('inputs_list', data=inputs_list)
+    with h5py.File('latent_space.h5', 'w') as f:
+        f.create_dataset('inputs_list', data=np.array(inputs_list, dtype = np.float64))
+        f.create_dataset('eta_list', data=np.array(eta_list, dtype = np.float64))
+        f.create_dataset('waferv_list', data=np.array(waferv_list, dtype = np.float64))
+        f.create_dataset('waferu_list', data=np.array(waferu_list, dtype = np.float64))
+        f.create_dataset('wafertype_list', data=np.array(wafertype_list, dtype = np.float64))
+        f.create_dataset('sumCALQ_list', data=np.array(sumCALQ_list, dtype = np.float64))
+        f.create_dataset('layer_list', data=np.array(layer_list, dtype = np.float64))
         f.close()
-    with h5py.File('eta_list.h5', 'w') as f:
-        f.create_dataset('eta_list', data=eta_list)
-        f.close()
-    with h5py.File('waferv_list.h5', 'w') as f:
-        f.create_dataset('waferv_list', data=waferv_list)
-        f.close()
-    with h5py.File('waferu_list.h5', 'w') as f:
-        f.create_dataset('waferu_list', data=waferu_list)
-        f.close()
-    with h5py.File('wafertype_list.h5', 'w') as f:
-        f.create_dataset('wafertype_list', data=wafertype_list)
-        f.close()
-    with h5py.File('sumCALQ_list.h5', 'w') as f:
-        f.create_dataset('sumCALQ_list', data=sumCALQ_list)
-        f.close()
-    with h5py.File('layer_list.h5', 'w') as f:
-        f.create_dataset('layer_list', data=layer_list)
-        f.close()
+
 
 
     return train_loader, test_loader    
@@ -369,7 +358,7 @@ for eLinks in [2,3,4,5]:
     
     encoder = tf.keras.Model([input_enc], latent, name="encoder")
 
-    encoder_path = os.path.join(args.mpath,f'model_{eLinks}_eLinks','best-encoder-epoch.weights.h5')
+    encoder_path = os.path.join(args.mpath,f'model_{eLinks}_eLinks','encoder_for_ls.weights.h5')
 
     encoder.load_weights(encoder_path)
 
@@ -394,25 +383,18 @@ for eLinks in [2,3,4,5]:
     conds = []
 
     train_latent = []
-    i = 0
+ 
     for wafers, cond in train_loader:
-        if (i == 10):
-            break
         encoder.save_weights(os.path.join(model_dir, 'ls.weights.h5'))
         train_latent.append(encoder.predict(wafers))
         conds.append(cond)
-        i = i+1
     
     print('train latent done')
 
-    i = 0
-
     test_latent = []
+
     for wafers, cond in test_loader:
-        if (i == 10):
-            break
         test_latent.append(encoder.predict(wafers))
-        i = i+1
     
     print('test latent done')
 
@@ -427,14 +409,8 @@ for eLinks in [2,3,4,5]:
     '''
     save_models(encoder,args.mname, isQK=False)
 
-    with h5py.File('train_latent.h5', 'w') as f:
-        f.create_dataset('train_latent', data=train_latent)
-        f.close()
-
-    with h5py.File('test_latent.h5', 'w') as f:
-        f.create_dataset('test_latent', data=test_latent)
-        f.close()
-
-    with h5py.File('conds.h5', 'w') as f:
-        f.create_dataset('conds', data=conds)
+    with h5py.File('latent_space.h5', 'w') as f:
+        f.create_dataset('train_latent', data=np.array(train_latent, dtype = np.float64))
+        f.create_dataset('test_latent', data=np.array(test_latent, dtype = np.float64))
+        f.create_dataset('conds', data=np.array(conds, dtype = np.float64))
         f.close()
