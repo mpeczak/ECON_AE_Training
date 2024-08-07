@@ -254,7 +254,7 @@ def load_data(nfiles,batchsize,eLinks = -1, normalize = True):
 
     test_loader = test_dataset.batch(batchsize).shuffle(buffer_size=test_size).prefetch(buffer_size=tf.data.AUTOTUNE)
 
-    with h5py.File('latent_space.h5', 'w') as f:
+    with h5py.File('new_ls.h5', 'w') as f:
         f.create_dataset('inputs_list', data=np.array(inputs_list, dtype = np.float64))
         f.create_dataset('eta_list', data=np.array(eta_list, dtype = np.float64))
         f.create_dataset('waferv_list', data=np.array(waferv_list, dtype = np.float64))
@@ -275,12 +275,10 @@ class keras_pad(Layer):
         x, padding, mode='CONSTANT', constant_values=0, name=None
     )
     
-    
 class keras_minimum(Layer):
     def call(self, x, sat_val = 1):
         return tf.minimum(x,sat_val)
-    
-    
+       
 class keras_floor(Layer):
     def call(self, x):
         if isinstance(x, tf.SparseTensor):
@@ -331,6 +329,7 @@ for eLinks in [2,3,4,5]:
 
 
     input_enc = Input(batch_shape=(batch,8,8,1), name = 'Wafer')
+    cond = Input(batch_shape=(batch, 8), name = 'Cond')
 
      # Apply quantization to input
     x = Activation('linear', name='input_quantization')(input_enc)  # No quantization in this step
@@ -356,9 +355,9 @@ for eLinks in [2,3,4,5]:
         floor = keras_floor()((latent *  outputMaxIntSize))/ outputMaxIntSize
         latent = keras_minimum()(floor, tf.convert_to_tensor(outputSaturationValue))
     
-    encoder = tf.keras.Model([input_enc], latent, name="encoder")
+    encoder = tf.keras.Model([input_enc, cond], latent, name="encoder")
 
-    encoder_path = os.path.join(args.mpath,f'model_{eLinks}_eLinks','encoder_for_ls.weights.h5')
+    encoder_path = os.path.join(args.mpath,f'model_{eLinks}_eLinks','encoder_new2.weights.h5')
 
     encoder.load_weights(encoder_path)
 
@@ -386,7 +385,7 @@ for eLinks in [2,3,4,5]:
  
     for wafers, cond in train_loader:
         encoder.save_weights(os.path.join(model_dir, 'ls.weights.h5'))
-        train_latent.append(encoder.predict(wafers))
+        train_latent.append(encoder.predict(wafers,cond))
         conds.append(cond)
     
     print('train latent done')
@@ -409,8 +408,9 @@ for eLinks in [2,3,4,5]:
     '''
     save_models(encoder,args.mname, isQK=False)
 
-    with h5py.File('latent_space.h5', 'w') as f:
+    with h5py.File('new_ls.h5', 'w') as f:
         f.create_dataset('train_latent', data=np.array(train_latent, dtype = np.float64))
         f.create_dataset('test_latent', data=np.array(test_latent, dtype = np.float64))
         f.create_dataset('conds', data=np.array(conds, dtype = np.float64))
         f.close()
+    
