@@ -124,6 +124,10 @@ def save_models(autoencoder, name, isQK=False):
     with open(f'./{model_dir}/encoder_{name}.json','w') as f:            f.write(encoder.to_json())
     with open(f'./{model_dir}/decoder_{name}.json','w') as f:            f.write(decoder.to_json())
 
+    autoencoder.save('ae.keras')
+    encoder.save('e.keras')
+    decoder.save('d.keras')
+
     autoencoder.save_weights(f'./{model_dir}/{name}.weights.h5')
     encoder.save_weights(f'./{model_dir}/encoder_{name}.weights.h5')
     decoder.save_weights(f'./{model_dir}/decoder_{name}.weights.h5')
@@ -530,20 +534,19 @@ def load_data(nfiles,batchsize,eLinks = -1, normalize = True):
 
 
     return train_loader, test_loader
-    
+
+
 class keras_pad(Layer):
     def call(self, x):
         padding = tf.constant([[0,0],[0, 1], [0, 1], [0, 0]])
         return tf.pad(
         x, padding, mode='CONSTANT', constant_values=0, name=None
     )
-    
-    
+   
 class keras_minimum(Layer):
     def call(self, x, sat_val = 1):
         return tf.minimum(x,sat_val)
-    
-    
+
 class keras_floor(Layer):
     def call(self, x):
         if isinstance(x, tf.SparseTensor):
@@ -598,24 +601,25 @@ for eLinks in [2,3,4,5]:
     # Define encoder inputs
     input_enc = Input(batch_shape=(batch, 8, 8, 1), name='Wafer')
     cond = Input(batch_shape=(batch, 8), name='Cond')
+    print("done")
 
     # Apply quantization to input
-    x = Activation('linear', name='input_quantization')(input_enc)  # No quantization in this step
+    x = QActivation('linear', name='input_quantization')(input_enc)  # No quantization in this step
 
     # Apply convolutional layer
-    x = Conv2D(n_kernels, CNN_kernel_size, strides=2, padding='valid', name="conv2d")(x)
+    x = QConv2D(n_kernels, CNN_kernel_size, strides=2, padding='valid', name="conv2d")(x)
 
     # Apply activation function
-    x = Activation(relu, name='act')(x)
+    x = QActivation(relu, name='act')(x)
 
     # Flatten the output
     x = Flatten()(x)
 
     # Apply dense layer
-    x = Dense(n_encoded, name="dense")(x)
+    x = QDense(n_encoded, name="dense")(x)
 
     # Apply quantization to latent space
-    x = Activation('linear', name='latent_quantization')(x)  # No quantization in this step
+    x = QActivation('linear', name='latent_quantization')(x)  # No quantization in this step
 
     # Concatenate with condition
     latent = concatenate([x, cond], axis=1)
@@ -643,6 +647,7 @@ for eLinks in [2,3,4,5]:
         outputs=decoder([encoder([input_enc,cond])]),
         name="cae"
     )
+
 
     if args.loss == 'mse':
         loss=mean_mse_loss
