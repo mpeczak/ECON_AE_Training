@@ -80,10 +80,10 @@ def get_pams():
 
 def save_models(autoencoder, name, isQK=False):
     json_string = autoencoder.to_json()
-    f'./{model_dir}/{name}.json'
-    with open(f'./{model_dir}/{name}.json','w') as f:        f.write(autoencoder.to_json())
+    f'{model_dir}/{name}.json'
+    with open(f'{model_dir}/{name}.json','w') as f:        f.write(autoencoder.to_json())
 
-    autoencoder.save_weights(f'./{model_dir}/{name}.weights.h5')
+    autoencoder.save_weights(f'{model_dir}/{name}.weights.h5')
     if isQK:
         encoder_qWeight = model_save_quantized_weights(autoencoder)
         with open(f'{model_dir}/encoder_{name}.pkl','wb') as f:
@@ -332,22 +332,24 @@ for eLinks in [2,3,4,5]:
     cond = Input(batch_shape=(batch, 8), name = 'Cond')
 
      # Apply quantization to input
-    x = Activation('linear', name='input_quantization')(input_enc)  # No quantization in this step
+    print("done")
+    print("done")
+    x = QActivation('linear', name='input_quantization')(input_enc)  # No quantization in this step
 
     # Apply convolutional layer
-    x = Conv2D(n_kernels, CNN_kernel_size, strides=2, padding='valid', name="conv2d")(x)
+    x = QConv2D(n_kernels, CNN_kernel_size, strides=2, padding='valid', name="conv2d")(x)
 
     # Apply activation function
-    x = Activation(relu, name='act')(x)
+    x = QActivation(relu, name='act')(x)
 
     # Flatten the output
     x = Flatten()(x)
 
     # Apply dense layer
-    x = Dense(n_encoded, name="dense")(x)
+    x = QDense(n_encoded, name="dense")(x)
 
     # Apply quantization to latent space
-    x = Activation('linear', name='latent_quantization')(x)  # No quantization in this step
+    x = QActivation('linear', name='latent_quantization')(x)  # No quantization in this step
 
     latent = x
     if bitsPerOutput > 0 and maxBitsPerOutput > 0:
@@ -356,8 +358,9 @@ for eLinks in [2,3,4,5]:
         latent = keras_minimum()(floor, tf.convert_to_tensor(outputSaturationValue))
     
     encoder = tf.keras.Model([input_enc, cond], latent, name="encoder")
+    print("All layer names in the model:", [layer.name for layer in encoder.layers])
 
-    encoder_path = os.path.join(args.mpath,f'model_{eLinks}_eLinks','encoder_new2.weights.h5')
+    encoder_path = os.path.join(args.mpath,f'model_{eLinks}_eLinks','best-encoder-epoch.weights.h5')
 
     encoder.load_weights(encoder_path)
 
@@ -385,7 +388,7 @@ for eLinks in [2,3,4,5]:
  
     for wafers, cond in train_loader:
         encoder.save_weights(os.path.join(model_dir, 'ls.weights.h5'))
-        train_latent.append(encoder.predict(wafers,cond))
+        train_latent.append(encoder.predict([wafers, cond]))
         conds.append(cond)
     
     print('train latent done')
@@ -393,7 +396,7 @@ for eLinks in [2,3,4,5]:
     test_latent = []
 
     for wafers, cond in test_loader:
-        test_latent.append(encoder.predict(wafers))
+        test_latent.append(encoder.predict([wafers, cond]))
     
     print('test latent done')
 
@@ -411,6 +414,5 @@ for eLinks in [2,3,4,5]:
     with h5py.File('new_ls.h5', 'w') as f:
         f.create_dataset('train_latent', data=np.array(train_latent, dtype = np.float64))
         f.create_dataset('test_latent', data=np.array(test_latent, dtype = np.float64))
-        f.create_dataset('conds', data=np.array(conds, dtype = np.float64))
         f.close()
     
