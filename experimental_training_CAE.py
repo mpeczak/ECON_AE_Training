@@ -237,15 +237,11 @@ def custom_resample(wafers,c,simE):
     
     return wafers_p, c_p
 
-def custom_reweigh(wafers,c,simE):
+def custom_reweigh(simE):
     weights = np.log(simE + 1)
     weights /= np.sum(weights)
 
-    indices = np.random.choice(np.arange(len(wafers)), size=len(wafers), p=weights, replace=True)
-    wafers_p = wafers[indices_p[:,0]]
-    c_p = c[indices_p[:,0]]
-
-    return wafers_p, c_p
+    return weights
 
 def get_old_mask(eLinks, df):
     # Initialize a mask with all False values, with the same index as the DataFrame
@@ -589,15 +585,13 @@ def load_data(nfiles,batchsize,model_info = -1, normalize = True):
         print(len(cond_train))
     
 
-    weights_train = np.log(simE_train + 1)
-    weights_train /= np.sum(weights_train)
+    weights_train = custom_reweight(simE_train)
 
     # Create the training dataset
     train_dataset = tf.data.Dataset.from_tensor_slices((wafer_train,cond_train, weights_train)
     )
 
-    weights_test = np.log(simE_test + 1)
-    weights_test /= np.sum(weights_test)
+    weights_test = custom_reweight(simE_test)
 
     # Create the test dataset
     test_dataset = tf.data.Dataset.from_tensor_slices((wafer_test,cond_test, weights_test)
