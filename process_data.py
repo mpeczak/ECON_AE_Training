@@ -84,8 +84,16 @@ def custom_resample(wafers, c, simE):
 
 def custom_reweigh(simE):
     #reweigh based on simE
-    weights = np.log(simE + 1)
-    #normalization
+    n_bins = 50
+    hist, bin_edges = np.histogram(simE, bins=n_bins)
+    bin_indices = np.digitize(simE, bin_edges[:-1])
+
+    weights = np.zeros_like(simE, dtype=float)
+    for i in range(1, n_bins + 1):
+        count = np.sum(bin_indices == i)
+        if count > 0:
+            weights[bin_indices == i] = 1.0 / count
+
     weights /= np.sum(weights)
 
     #wafers_p = np.repeat(wafers, weights, axis=0)
@@ -315,9 +323,9 @@ def process_data(files, save_every_n_files, model_info=-1, normalize=True, model
             cond_test = concatenated_cond[test_indices]
 
             # Optionally re-sample
-            if args.biased:
-                weights_train = custom_reweigh(simE_train)
-                weights_test = custom_reweigh(simE_test)
+            
+            weights_train = custom_reweigh(simE_train)
+            weights_test = custom_reweigh(simE_test)
 
             # Build TF datasets
             train_dataset = tf.data.Dataset.from_tensor_slices((wafer_train, cond_train, weights_train))
