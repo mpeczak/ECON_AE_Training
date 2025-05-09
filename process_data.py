@@ -84,21 +84,14 @@ def custom_resample(wafers, c, simE):
 
 def custom_reweigh(simE):
     #reweigh based on simE
-    n_bins = 50
-    hist, bin_edges = np.histogram(simE, bins=n_bins)
-    bin_indices = np.digitize(simE, bin_edges[:-1])
-
-    weights = np.zeros_like(simE, dtype=float)
-    for i in range(1, n_bins + 1):
-        count = np.sum(bin_indices == i)
-        if count > 0:
-            weights[bin_indices == i] = 1.0 / count
-
-    weights /= np.sum(weights)
-
-    #wafers_p = np.repeat(wafers, weights, axis=0)
-    #c_p = np.repeat(c, weights, axis=0)
-
+    simE = np.ravel(simE)
+    #get ranks to then get the cdf (normalized)
+    ranks = np.argsort(np.argsort(simE))
+    cdf = ranks / (len(simE) - 1)  
+    #unnormalize
+    max_val = np.max(simE)
+    weights = cdf*max_val
+    
     return weights
 
 ##############################################################################
